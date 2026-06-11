@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, getDocs, updateDoc, doc, serverTimestamp, orderBy, where } from "firebase/firestore";
+import { collection, query, getDocs, updateDoc, doc, serverTimestamp, orderBy, where, getDoc } from "firebase/firestore";
 import { CreditCard, CheckCircle2, Clock, XCircle, ArrowUpRight, Check, X } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,8 @@ export default function WithdrawalsPage() {
   const [selectedReq, setSelectedReq] = useState<any>(null);
   const [adminNote, setAdminNote] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmData, setConfirmData] = useState<{ id: string, nextStatus: "processing" | "completed", amount: number, sellerId: string } | null>(null);
 
   const fetchRequests = async () => {
     try {
@@ -38,8 +40,14 @@ export default function WithdrawalsPage() {
     fetchRequests();
   }, []);
 
-  const handleUpdateStatus = async (id: string, nextStatus: "processing" | "completed", amount: number, sellerId: string) => {
-    if (!confirm(`Apakah Anda yakin ingin memproses status penarikan menjadi "${nextStatus}"?`)) return;
+  const handleUpdateStatus = (id: string, nextStatus: "processing" | "completed", amount: number, sellerId: string) => {
+    setConfirmData({ id, nextStatus, amount, sellerId });
+    setShowConfirmModal(true);
+  };
+
+  const executeUpdateStatus = async () => {
+    if (!confirmData) return;
+    const { id, nextStatus } = confirmData;
     setSubmitting(true);
     try {
       const docRef = doc(db, "withdrawals", id);
@@ -49,6 +57,8 @@ export default function WithdrawalsPage() {
       });
       toast.success(`Status penarikan dana berhasil diperbarui menjadi ${nextStatus}.`);
       fetchRequests();
+      setShowConfirmModal(false);
+      setConfirmData(null);
     } catch (err) {
       console.error("Error updating withdrawal status:", err);
       toast.error("Gagal memperbarui status penarikan dana.");
@@ -62,12 +72,37 @@ export default function WithdrawalsPage() {
     if (!selectedReq || !adminNote.trim()) return;
     setSubmitting(true);
     try {
+      // 1. Update status withdrawal
       await updateDoc(doc(db, "withdrawals", selectedReq.id), {
         status: "rejected",
         adminNote: adminNote.trim(),
         processedAt: serverTimestamp(),
       });
-      toast.success("Permintaan penarikan berhasil ditolak.");
+
+      // 2. Kembalikan saldo ke seller
+      const sellerRef = doc(db, "sellers", selectedReq.sellerId);
+      const currentSellerSnap = await getDoc(sellerRef);
+      const currentBalance = currentSellerSnap.data()?.walletBalance || 0;
+      const newBalance = currentBalance + Number(selectedReq.amount);
+
+      const { increment } = await import("firebase/firestore");
+      await updateDoc(sellerRef, {
+        walletBalance: increment(Number(selectedReq.amount))
+      });
+
+      // 3. Catat di riwayat transaksi sebagai refund (credit)
+      const { addDoc } = await import("firebase/firestore");
+      await addDoc(collection(db, "wallet_transactions"), {
+        sellerId: selectedReq.sellerId,
+        orderId: selectedReq.id, // simpan ID penarikan untuk referensi
+        type: "credit",
+        amount: Number(selectedReq.amount),
+        description: "Pengembalian Dana (Penarikan Ditolak)",
+        balanceAfter: newBalance,
+        createdAt: serverTimestamp(),
+      });
+
+      toast.success("Permintaan penarikan berhasil ditolak dan dana telah dikembalikan ke seller.");
       setShowRejectModal(false);
       setAdminNote("");
       setSelectedReq(null);
@@ -278,6 +313,37 @@ export default function WithdrawalsPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* Confirm Modal */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className="bg-surface border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Proses</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-muted-foreground text-sm">
+              Apakah Anda yakin ingin memproses status penarikan menjadi <span className="font-bold text-accent">"{confirmData?.nextStatus}"</span>?
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowConfirmModal(false)}
+              className="bg-surface-3 border-border hover:bg-[#3A3A3A] text-foreground"
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              onClick={executeUpdateStatus}
+              disabled={submitting}
+              className="bg-accent hover:bg-accent/90 text-black font-bold"
+            >
+              {submitting ? "Memproses..." : "Ya, Lanjutkan"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

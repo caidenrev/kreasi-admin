@@ -22,6 +22,7 @@ function ProductCurationContent() {
   const [filter, setFilter] = useState("pending");
   const [rejectNote, setRejectNote] = useState("");
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showApproveModal, setShowApproveModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,17 +51,18 @@ function ProductCurationContent() {
     fetchProducts();
   }, [reviewId]);
 
-  const handleApprove = async (product: any) => {
-    if (!confirm(`Apakah Anda yakin ingin menyetujui produk "${product.title}"?`)) return;
+  const confirmApprove = async () => {
+    if (!selectedProduct) return;
     setSubmitting(true);
     try {
-      await updateDoc(doc(db, "products", product.id), {
+      await updateDoc(doc(db, "products", selectedProduct.id), {
         reviewStatus: "approved",
         reviewNote: "",
         reviewedAt: serverTimestamp(),
       });
       toast.success("Produk berhasil disetujui!");
       setSelectedProduct(null);
+      setShowApproveModal(false);
       fetchProducts();
     } catch (err) {
       console.error("Error approving product:", err);
@@ -212,7 +214,7 @@ function ProductCurationContent() {
                   
                   <div className="flex gap-2">
                     <Button
-                      onClick={() => handleApprove(selectedProduct)}
+                      onClick={() => setShowApproveModal(true)}
                       disabled={submitting || selectedProduct.reviewStatus === "approved"}
                       className="bg-green-600 hover:bg-green-700 text-foreground font-bold h-8 text-xs"
                     >
@@ -353,6 +355,40 @@ function ProductCurationContent() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Approve Modal */}
+      <Dialog open={showApproveModal} onOpenChange={setShowApproveModal}>
+        <DialogContent className="bg-surface border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-500">
+              <Check className="w-5 h-5" /> Konfirmasi Persetujuan
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-4 text-sm text-muted-foreground">
+            Apakah Anda yakin ingin menyetujui produk <span className="text-foreground font-bold">{selectedProduct?.title}</span>? Produk ini akan segera dirilis ke publik.
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowApproveModal(false)}
+              className="bg-surface-3 border-border hover:bg-[#3A3A3A] text-foreground"
+            >
+              Tidak
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmApprove}
+              disabled={submitting}
+              className="bg-green-600 hover:bg-green-700 text-foreground font-bold"
+            >
+              {submitting ? "Memproses..." : "Ya, Setujui"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
