@@ -3,10 +3,14 @@
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, getDocs, updateDoc, doc, orderBy, query } from "firebase/firestore";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export default function SellersPage() {
   const [sellers, setSellers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [sellerToToggle, setSellerToToggle] = useState<{ id: string; name: string; currentStatus: string } | null>(null);
 
   const fetchSellers = async () => {
     try {
@@ -24,12 +28,21 @@ export default function SellersPage() {
     fetchSellers();
   }, []);
 
-  const handleToggleStatus = async (id: string, currentStatus: string) => {
+  const handleToggleStatus = (id: string, name: string, currentStatus: string) => {
+    setSellerToToggle({ id, name, currentStatus });
+    setShowStatusModal(true);
+  };
+
+  const confirmToggleStatus = async () => {
+    if (!sellerToToggle) return;
+    const { id, currentStatus } = sellerToToggle;
     const nextStatus = currentStatus === "active" ? "suspended" : "active";
-    if (!confirm(`Apakah Anda yakin ingin mengubah status seller menjadi "${nextStatus}"?`)) return;
+    
     try {
       await updateDoc(doc(db, "sellers", id), { status: nextStatus });
       setSellers(sellers.map((s) => (s.id === id ? { ...s, status: nextStatus } : s)));
+      setShowStatusModal(false);
+      setSellerToToggle(null);
     } catch (err) {
       console.error("Error toggling seller status:", err);
     }
@@ -112,7 +125,7 @@ export default function SellersPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => handleToggleStatus(s.id, s.status)}
+                        onClick={() => handleToggleStatus(s.id, s.displayName || s.username, s.status)}
                         className={`text-xs px-3 py-1.5 rounded-lg border font-bold transition-colors ${
                           s.status === "active"
                             ? "bg-surface-3 text-red-400 border-red-500/15 hover:bg-red-500/10"
@@ -129,6 +142,29 @@ export default function SellersPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={showStatusModal} onOpenChange={setShowStatusModal}>
+        <DialogContent className="sm:max-w-[425px]" aria-describedby="status-dialog-description">
+          <DialogHeader>
+            <DialogTitle>Konfirmasi Ubah Status</DialogTitle>
+            <DialogDescription id="status-dialog-description" className="py-4 text-sm text-muted-foreground">
+              Apakah Anda yakin ingin mengubah status seller <strong>"{sellerToToggle?.name}"</strong> menjadi{" "}
+              <strong className="text-foreground">{sellerToToggle?.currentStatus === "active" ? "Suspended" : "Active"}</strong>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowStatusModal(false)}>
+              Batal
+            </Button>
+            <Button 
+              variant={sellerToToggle?.currentStatus === "active" ? "destructive" : "default"} 
+              onClick={confirmToggleStatus}
+            >
+              Ya, Ubah Status
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
