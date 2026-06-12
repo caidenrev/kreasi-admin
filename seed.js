@@ -39,11 +39,10 @@ admin.initializeApp({
 const adminAuth = admin.auth();
 const adminDb = admin.firestore();
 
-// 3. Seed function
 async function seed() {
   try {
     console.log("🚀 Starting Seeding for Project:", process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
-    
+
     // --- ADMIN ---
     console.log("Seeding Admin User...");
     try {
@@ -74,10 +73,10 @@ async function seed() {
         password: "Password123!",
         displayName: "Demo Seller",
       });
-      console.log("✅ Seller user created.");
+      console.log("Seller user created.");
     } catch (e) {
       if (e.code === 'auth/email-already-exists') {
-        console.log("⚠️ Seller user already exists. Updating password to Password123!...");
+        console.log("Seller user already exists. Updating password to Password123!...");
         const sellerUser = await adminAuth.getUserByEmail("seller@kreasi.id");
         await adminAuth.updateUser(sellerUser.uid, { password: "Password123!" });
       } else {
@@ -85,7 +84,7 @@ async function seed() {
       }
     }
     const sellerUser = await adminAuth.getUserByEmail("seller@kreasi.id");
-    
+
     await adminDb.collection("sellers").doc(sellerUser.uid).set({
       name: "Demo Seller",
       email: "seller@kreasi.id",
